@@ -2,30 +2,789 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+
+  <!--
+    gallery.html - Live Google Sheet Gallery v1
+    -------------------------------------------
+    Same visual style as the previous gallery, but data now comes from Google Sheets.
+
+    Reads from Apps Script:
+      action=getGalleryData
+
+    Google Sheet tabs:
+      Settings
+      Gallery Images
+
+    GitHub still hosts the actual images:
+      images/photo_001.jpg
+      images/photo_002.jpg
+
+    Features:
+      - status bar from Settings sheet
+      - gallery title/subtitle from Settings sheet
+      - image list from Gallery Images sheet
+      - images are preloaded/cached
+      - fullscreen image viewer
+      - pinch zoom
+      - double-tap zoom/reset
+      - pan when zoomed
+      - swipe left/right when not zoomed
+      - X closes viewer
+      - Time Reset Toggle lets you reset the top-bar clock remotely
+  -->
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+  >
+
   <title>Gallery</title>
+
   <style>
-    html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#f4f6f8;font-family:Arial,Roboto,Helvetica,sans-serif;-webkit-text-size-adjust:100%;color:#18222d}.app{height:100vh;display:flex;flex-direction:column;background:#f4f6f8}.status-bar{padding:calc(8px + env(safe-area-inset-top)) 18px 7px;display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:700;color:#18222d;background:#f4f6f8;flex-shrink:0}.status-right{display:flex;align-items:center;gap:7px}.signal-bars{display:flex;align-items:end;gap:2px;height:11px}.signal-bars span{width:3px;background:currentColor;border-radius:2px}.signal-bars span:nth-child(1){height:3px}.signal-bars span:nth-child(2){height:6px}.signal-bars span:nth-child(3){height:8px}.signal-bars span:nth-child(4){height:11px}.battery{width:24px;height:11px;border:1.6px solid currentColor;border-radius:3px;position:relative;overflow:hidden}.battery:after{content:"";position:absolute;right:-4px;top:3px;width:3px;height:5px;background:currentColor;border-radius:0 2px 2px 0}.battery-fill{height:100%;width:43%;background:currentColor}.app-header{padding:16px 18px 12px;background:#f4f6f8;border-bottom:1px solid rgba(24,34,45,.08);flex-shrink:0}.app-title{font-size:30px;font-weight:900;letter-spacing:-.04em}.app-subtitle{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.14em;color:#687584;margin-top:3px}.gallery{flex:1;overflow-y:auto;padding:14px 12px 28px;-webkit-overflow-scrolling:touch}.date-section{margin-bottom:24px}.date-title{font-size:15px;font-weight:900;color:#18222d;margin:10px 4px 10px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}.thumb{aspect-ratio:1/1;background:#dde3ea;border:none;padding:0;overflow:hidden;border-radius:8px}.thumb img{width:100%;height:100%;object-fit:cover;display:block}.viewer{position:fixed;inset:0;background:#05070a;z-index:999;display:none;overflow:hidden;touch-action:none}.viewer.open{display:block}.viewer-top{position:absolute;top:calc(8px + env(safe-area-inset-top));left:0;right:0;height:48px;display:flex;justify-content:space-between;align-items:center;padding:0 14px;z-index:5;color:white}.viewer-title{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:rgba(255,255,255,.7)}.viewer-close{width:42px;height:42px;border-radius:14px;border:none;background:rgba(38,49,61,.9);color:#f4f7fb;font-size:26px;line-height:1;font-weight:600}.viewer-image{position:absolute;top:50%;left:50%;max-width:94vw;max-height:86vh;transform:translate(-50%,-50%) scale(1);transform-origin:center center;user-select:none;-webkit-user-drag:none;border-radius:8px}.loading{padding:20px;font-weight:700;color:#687584}
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: #f5f6f8;
+      font-family: Arial, Roboto, Helvetica, sans-serif;
+      overflow: hidden;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    .app {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg, #f5f6f8);
+      color: var(--text, #15191f);
+    }
+
+    .status-bar {
+      padding: calc(8px + env(safe-area-inset-top)) 18px 7px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: #15191f;
+      flex-shrink: 0;
+    }
+
+    .status-right {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .signal-bars {
+      display: flex;
+      align-items: end;
+      gap: 2px;
+      height: 11px;
+    }
+
+    .signal-bars span {
+      width: 3px;
+      background: currentColor;
+      border-radius: 2px;
+      opacity: 0.25;
+    }
+
+    .signal-bars span:nth-child(1) { height: 3px; }
+    .signal-bars span:nth-child(2) { height: 6px; }
+    .signal-bars span:nth-child(3) { height: 8px; }
+    .signal-bars span:nth-child(4) { height: 11px; }
+
+    .signal-bars.bars-1 span:nth-child(-n+1),
+    .signal-bars.bars-2 span:nth-child(-n+2),
+    .signal-bars.bars-3 span:nth-child(-n+3),
+    .signal-bars.bars-4 span:nth-child(-n+4) {
+      opacity: 1;
+    }
+
+    .battery {
+      width: 24px;
+      height: 11px;
+      border: 1.6px solid currentColor;
+      border-radius: 3px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .battery::after {
+      content: "";
+      position: absolute;
+      right: -4px;
+      top: 3px;
+      width: 3px;
+      height: 5px;
+      background: currentColor;
+      border-radius: 0 2px 2px 0;
+    }
+
+    .battery-fill {
+      height: 100%;
+      width: 84%;
+      background: currentColor;
+    }
+
+    .header {
+      padding: 16px 20px 12px;
+      flex-shrink: 0;
+    }
+
+    .title {
+      font-size: 30px;
+      line-height: 1;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+    }
+
+    .subtitle {
+      margin-top: 7px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #6b7280;
+    }
+
+    .gallery-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 12px 28px;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .date-section {
+      margin-top: 18px;
+    }
+
+    .date-title {
+      font-size: 14px;
+      font-weight: 800;
+      color: #374151;
+      margin: 0 8px 9px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+    }
+
+    .thumb {
+      position: relative;
+      aspect-ratio: 1 / 1;
+      border: none;
+      padding: 0;
+      overflow: hidden;
+      background: #d1d5db;
+      border-radius: 4px;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+
+    .thumb img.loaded {
+      opacity: 1;
+    }
+
+    .error-box {
+      margin: 22px 8px;
+      padding: 14px;
+      border-radius: 14px;
+      background: #fee2e2;
+      color: #7f1d1d;
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.35;
+    }
+
+    .viewer {
+      position: fixed;
+      inset: 0;
+      display: none;
+      background: #05070a;
+      z-index: 99;
+      overflow: hidden;
+      touch-action: none;
+    }
+
+    .viewer.open {
+      display: block;
+    }
+
+    .viewer-status {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      padding: calc(8px + env(safe-area-inset-top)) 18px 7px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: rgba(244,247,251,0.92);
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    .viewer-top {
+      position: absolute;
+      top: calc(34px + env(safe-area-inset-top));
+      left: 0;
+      right: 0;
+      padding: 10px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 6;
+      pointer-events: none;
+    }
+
+    .viewer-info {
+      color: rgba(244,247,251,0.84);
+      font-size: 13px;
+      font-weight: 700;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.45);
+    }
+
+    .viewer-close {
+      pointer-events: auto;
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      border: none;
+      background: rgba(38,49,61,0.9);
+      color: #f4f7fb;
+      font-size: 26px;
+      line-height: 1;
+      font-weight: 600;
+    }
+
+    .viewer-image {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      max-width: 100vw;
+      max-height: 100vh;
+      transform: translate(-50%, -50%) scale(1);
+      transform-origin: center center;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
   </style>
 </head>
+
 <body>
   <div class="app">
-    <div class="status-bar"><div id="displayTime">10:47</div><div class="status-right"><div class="signal-bars"><span></span><span></span><span></span><span></span></div><span>5G</span><span>43%</span><div class="battery"><div class="battery-fill"></div></div></div></div>
-    <div class="app-header"><div class="app-title">Gallery</div><div class="app-subtitle">Recent photos</div></div>
-    <div class="gallery" id="gallery"><div class="loading">Loading gallery…</div></div>
+    <div class="status-bar">
+      <div id="statusTime">10:47</div>
+      <div class="status-right">
+        <div class="signal-bars bars-4" id="signalBars">
+          <span></span><span></span><span></span><span></span>
+        </div>
+        <span id="statusSignal">5G</span>
+        <span id="statusBattery">84%</span>
+        <div class="battery">
+          <div class="battery-fill" id="batteryFill"></div>
+        </div>
+      </div>
+    </div>
+
+    <header class="header">
+      <div class="title" id="galleryTitle">Gallery</div>
+      <div class="subtitle" id="gallerySubtitle">Recent photos</div>
+    </header>
+
+    <main class="gallery-scroll" id="galleryScroll"></main>
   </div>
-  <div class="viewer" id="viewer"><div class="viewer-top"><div class="viewer-title" id="viewerTitle">Photo</div><button class="viewer-close" onclick="closeViewer()">×</button></div><img class="viewer-image" id="viewerImage" src="" alt=""></div>
+
+  <div class="viewer" id="viewer">
+    <div class="viewer-status">
+      <div id="viewerStatusTime">10:47</div>
+      <div class="status-right">
+        <div class="signal-bars bars-4" id="viewerSignalBars">
+          <span></span><span></span><span></span><span></span>
+        </div>
+        <span id="viewerStatusSignal">5G</span>
+        <span id="viewerStatusBattery">84%</span>
+        <div class="battery">
+          <div class="battery-fill" id="viewerBatteryFill"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="viewer-top">
+      <div class="viewer-info" id="viewerInfo"></div>
+      <button class="viewer-close" type="button" onclick="closeViewer()">×</button>
+    </div>
+
+    <img class="viewer-image" id="viewerImage" alt="">
+  </div>
+
+  <script src="config.js"></script>
+
   <script>
-    let photos=[];const gallery=document.getElementById('gallery'),viewer=document.getElementById('viewer'),viewerImage=document.getElementById('viewerImage'),viewerTitle=document.getElementById('viewerTitle');let scale=1,x=0,y=0,dragging=false,lastX=0,lastY=0,pinchStartDistance=0,pinchStartScale=1;
-    async function loadGallery(){const res=await fetch('gallery.csv?cache=' + Date.now());const text=await res.text();photos=parseCsv(text).filter(p=>String(p.Visible||'TRUE').toUpperCase()==='TRUE');renderGallery();preloadImages()}
-    function parseCsv(text){const lines=text.trim().split(/\r?\n/);const headers=splitCsvLine(lines.shift());return lines.map(line=>{const vals=splitCsvLine(line);const o={};headers.forEach((h,i)=>o[h]=vals[i]||'');return o})}
-    function splitCsvLine(line){const out=[];let cur='',q=false;for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'){q=!q;continue}if(c===','&&!q){out.push(cur);cur='';continue}cur+=c}out.push(cur);return out}
-    function renderGallery(){const grouped={};photos.forEach(p=>{const d=p.Date||'Undated';if(!grouped[d])grouped[d]=[];grouped[d].push(p)});gallery.innerHTML=Object.keys(grouped).map(date=>`<section class="date-section"><div class="date-title">${escapeHtml(date)}</div><div class="grid">${grouped[date].map(p=>`<button class="thumb" onclick="openViewer('${escapeAttr(p['Image URL'])}','${escapeAttr(p.Caption||date)}')"><img src="${escapeAttr(p['Image URL'])}" loading="eager"></button>`).join('')}</div></section>`).join('')}
-    function preloadImages(){photos.forEach(p=>{const img=new Image();img.src=p['Image URL']})}
-    function openViewer(src,title){viewerImage.src=src;viewerTitle.textContent=title||'Photo';scale=1;x=0;y=0;updateTransform();viewer.classList.add('open')}
-    function closeViewer(){viewer.classList.remove('open');viewerImage.src=''}function updateTransform(){viewerImage.style.transform=`translate(calc(-50% + ${x}px), calc(-50% + ${y}px)) scale(${scale})`}
-    viewer.addEventListener('wheel',e=>{e.preventDefault();scale=Math.max(1,Math.min(6,scale+(e.deltaY<0?.12:-.12)));updateTransform()},{passive:false});viewer.addEventListener('mousedown',e=>{dragging=true;lastX=e.clientX;lastY=e.clientY});window.addEventListener('mousemove',e=>{if(!dragging)return;x+=e.clientX-lastX;y+=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;updateTransform()});window.addEventListener('mouseup',()=>dragging=false);viewer.addEventListener('touchstart',e=>{if(e.touches.length===1){dragging=true;lastX=e.touches[0].clientX;lastY=e.touches[0].clientY}if(e.touches.length===2){dragging=false;pinchStartDistance=getTouchDistance(e.touches);pinchStartScale=scale}},{passive:false});viewer.addEventListener('touchmove',e=>{e.preventDefault();if(e.touches.length===1&&dragging){x+=e.touches[0].clientX-lastX;y+=e.touches[0].clientY-lastY;lastX=e.touches[0].clientX;lastY=e.touches[0].clientY;updateTransform()}if(e.touches.length===2){const d=getTouchDistance(e.touches);scale=Math.max(1,Math.min(6,pinchStartScale*(d/pinchStartDistance)));updateTransform()}},{passive:false});viewer.addEventListener('touchend',()=>dragging=false);function getTouchDistance(t){const dx=t[0].clientX-t[1].clientX,dy=t[0].clientY-t[1].clientY;return Math.sqrt(dx*dx+dy*dy)}
-    function escapeHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}function escapeAttr(s){return escapeHtml(s).replace(/'/g,'&#39;')}function updateTime(){const d=new Date();document.getElementById('displayTime').textContent=d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false})}updateTime();setInterval(updateTime,60000);loadGallery().catch(e=>{gallery.innerHTML='<div class="loading">Could not load gallery.csv</div>';console.log(e)})
+    /* ============================================================
+       1. STATE
+       ============================================================ */
+
+    let settings = {};
+    let photos = [];
+    let currentIndex = 0;
+    let renderedImageSignature = "";
+
+    let displayTimeBaseMinutes = 0;
+    let displayTimeStartedAt = 0;
+    let lastDisplayTime = "";
+    let lastTimeResetToken = "";
+
+    let scale = 1;
+    let offsetX = 0;
+    let offsetY = 0;
+    let dragging = false;
+    let lastX = 0;
+    let lastY = 0;
+    let startX = 0;
+    let startY = 0;
+    let lastTapTime = 0;
+    let pinchStartDistance = 0;
+    let pinchStartScale = 1;
+
+    /* ============================================================
+       2. API
+       ============================================================ */
+
+    function apiUrl(action) {
+      const url = new URL(API_URL);
+      url.searchParams.set("action", action);
+      return url.toString();
+    }
+
+    async function loadGalleryData() {
+      try {
+        const response = await fetch(apiUrl("getGalleryData"), {
+          method: "GET",
+          redirect: "follow"
+        });
+
+        const data = await response.json();
+
+        if (!data || data.success === false) {
+          throw new Error((data && data.error) || "Unknown gallery API error");
+        }
+
+        settings = data.settings || {};
+        photos = data.images || [];
+
+        applySettings(settings);
+        renderGalleryIfNeeded();
+        preloadImages();
+
+      } catch (error) {
+        showError(error.message || String(error));
+      }
+    }
+
+    function showError(message) {
+      document.getElementById("galleryScroll").innerHTML = `
+        <div class="error-box">
+          Gallery failed to load.<br><br>
+          ${escapeHtml(message)}
+        </div>
+      `;
+    }
+
+    /* ============================================================
+       3. SETTINGS / CLOCK
+       ============================================================ */
+
+    function applySettings(s) {
+      document.getElementById("galleryTitle").textContent = s["Gallery Title"] || "Gallery";
+      document.getElementById("gallerySubtitle").textContent = s["Gallery Subtitle"] || "Recent photos";
+
+      const battery = clamp(parseInt(s["Battery %"] || "84", 10), 0, 100);
+      const signal = s["Signal"] || "5G";
+      const signalBars = clamp(parseInt(s["Signal Bars"] || "4", 10), 1, 4);
+
+      document.getElementById("statusSignal").textContent = signal;
+      document.getElementById("viewerStatusSignal").textContent = signal;
+      document.getElementById("statusBattery").textContent = battery + "%";
+      document.getElementById("viewerStatusBattery").textContent = battery + "%";
+      document.getElementById("batteryFill").style.width = battery + "%";
+      document.getElementById("viewerBatteryFill").style.width = battery + "%";
+
+      document.getElementById("signalBars").className = "signal-bars bars-" + signalBars;
+      document.getElementById("viewerSignalBars").className = "signal-bars bars-" + signalBars;
+
+      updateDisplayTimeFromSettings(s);
+    }
+
+    function updateDisplayTimeFromSettings(s) {
+      const displayTime = String(s["Display Time"] || "10:47").trim();
+      const resetToken = String(s["Time Reset Toggle"] || "").trim();
+
+      if (
+        !displayTimeStartedAt ||
+        displayTime !== lastDisplayTime ||
+        resetToken !== lastTimeResetToken
+      ) {
+        displayTimeBaseMinutes = parseClockToMinutes(displayTime);
+        displayTimeStartedAt = Date.now();
+        lastDisplayTime = displayTime;
+        lastTimeResetToken = resetToken;
+      }
+
+      updateClock();
+    }
+
+    function updateClock() {
+      if (!displayTimeStartedAt) return;
+
+      const elapsedMinutes = Math.floor((Date.now() - displayTimeStartedAt) / 60000);
+      const display = formatClockMinutes(displayTimeBaseMinutes + elapsedMinutes);
+
+      document.getElementById("statusTime").textContent = display;
+      document.getElementById("viewerStatusTime").textContent = display;
+    }
+
+    /* ============================================================
+       4. GALLERY GRID
+       ============================================================ */
+
+    function renderGalleryIfNeeded() {
+      const signature = JSON.stringify(photos.map(p => [
+        p.PhotoID,
+        p.ImageURL,
+        p.DateTaken,
+        p.Caption,
+        p.Visible,
+        p.SortOrder
+      ]));
+
+      if (signature === renderedImageSignature) return;
+      renderedImageSignature = signature;
+      renderGallery();
+    }
+
+    function renderGallery() {
+      const root = document.getElementById("galleryScroll");
+      const grouped = {};
+
+      const visiblePhotos = photos
+        .filter(photo => String(photo.Visible || "TRUE").toUpperCase() !== "FALSE")
+        .sort((a, b) => {
+          const sortA = parseFloat(a.SortOrder || "999999");
+          const sortB = parseFloat(b.SortOrder || "999999");
+
+          if (!isNaN(sortA) && !isNaN(sortB) && sortA !== sortB) {
+            return sortA - sortB;
+          }
+
+          return new Date(b.DateTaken) - new Date(a.DateTaken);
+        });
+
+      photos = visiblePhotos;
+
+      photos.forEach((photo, index) => {
+        const dateKey = formatDateGroup(photo.DateTaken);
+        if (!grouped[dateKey]) grouped[dateKey] = [];
+        grouped[dateKey].push({ photo, index });
+      });
+
+      if (!photos.length) {
+        root.innerHTML = `
+          <div class="error-box">
+            No visible gallery images found.<br><br>
+            Check the Gallery Images sheet.
+          </div>
+        `;
+        return;
+      }
+
+      root.innerHTML = Object.keys(grouped).map(date => `
+        <section class="date-section">
+          <h2 class="date-title">${escapeHtml(date)}</h2>
+          <div class="grid">
+            ${grouped[date].map(({ photo, index }) => `
+              <button class="thumb" type="button" onclick="openViewer(${index})">
+                <img src="${escapeHtml(photo.ImageURL)}" onload="this.classList.add('loaded')">
+              </button>
+            `).join("")}
+          </div>
+        </section>
+      `).join("");
+    }
+
+    function preloadImages() {
+      photos.forEach(photo => {
+        const img = new Image();
+        img.src = photo.ImageURL;
+      });
+    }
+
+    /* ============================================================
+       5. VIEWER
+       ============================================================ */
+
+    function openViewer(index) {
+      currentIndex = index;
+      showCurrentPhoto();
+      document.getElementById("viewer").classList.add("open");
+    }
+
+    function closeViewer() {
+      document.getElementById("viewer").classList.remove("open");
+      document.getElementById("viewerImage").src = "";
+    }
+
+    function showCurrentPhoto() {
+      const photo = photos[currentIndex];
+      if (!photo) return;
+
+      resetTransform();
+      document.getElementById("viewerImage").src = photo.ImageURL;
+      document.getElementById("viewerInfo").textContent = formatViewerInfo(photo);
+    }
+
+    function nextPhoto() {
+      if (currentIndex < photos.length - 1) {
+        currentIndex++;
+        showCurrentPhoto();
+      }
+    }
+
+    function previousPhoto() {
+      if (currentIndex > 0) {
+        currentIndex--;
+        showCurrentPhoto();
+      }
+    }
+
+    function resetTransform() {
+      scale = 1;
+      offsetX = 0;
+      offsetY = 0;
+      updateTransform();
+    }
+
+    function updateTransform() {
+      document.getElementById("viewerImage").style.transform =
+        `translate(calc(-50% + ${offsetX}px), calc(-50% + ${offsetY}px)) scale(${scale})`;
+    }
+
+    function toggleZoom() {
+      if (scale > 1.02) {
+        resetTransform();
+      } else {
+        scale = 2.2;
+        offsetX = 0;
+        offsetY = 0;
+        updateTransform();
+      }
+    }
+
+    const viewer = document.getElementById("viewer");
+
+    viewer.addEventListener("touchstart", event => {
+      const now = Date.now();
+
+      if (event.touches.length === 1) {
+        dragging = true;
+        startX = lastX = event.touches[0].clientX;
+        startY = lastY = event.touches[0].clientY;
+
+        if (now - lastTapTime < 300) {
+          toggleZoom();
+          lastTapTime = 0;
+        } else {
+          lastTapTime = now;
+        }
+      }
+
+      if (event.touches.length === 2) {
+        dragging = false;
+        pinchStartDistance = getTouchDistance(event.touches);
+        pinchStartScale = scale;
+      }
+    }, { passive: false });
+
+    viewer.addEventListener("touchmove", event => {
+      event.preventDefault();
+
+      if (event.touches.length === 1 && dragging) {
+        const x = event.touches[0].clientX;
+        const y = event.touches[0].clientY;
+
+        if (scale > 1.02) {
+          offsetX += x - lastX;
+          offsetY += y - lastY;
+          updateTransform();
+        }
+
+        lastX = x;
+        lastY = y;
+      }
+
+      if (event.touches.length === 2) {
+        const distance = getTouchDistance(event.touches);
+        scale = Math.max(1, Math.min(5, pinchStartScale * (distance / pinchStartDistance)));
+        updateTransform();
+      }
+    }, { passive: false });
+
+    viewer.addEventListener("touchend", () => {
+      if (!dragging) return;
+
+      const dx = lastX - startX;
+      const dy = lastY - startY;
+
+      if (scale <= 1.02 && Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy)) {
+        if (dx < 0) nextPhoto();
+        else previousPhoto();
+      }
+
+      dragging = false;
+    });
+
+    viewer.addEventListener("wheel", event => {
+      event.preventDefault();
+      const delta = event.deltaY < 0 ? 0.14 : -0.14;
+      scale = Math.max(1, Math.min(5, scale + delta));
+      updateTransform();
+    }, { passive: false });
+
+    viewer.addEventListener("mousedown", event => {
+      dragging = true;
+      startX = lastX = event.clientX;
+      startY = lastY = event.clientY;
+    });
+
+    window.addEventListener("mousemove", event => {
+      if (!dragging) return;
+
+      if (scale > 1.02) {
+        offsetX += event.clientX - lastX;
+        offsetY += event.clientY - lastY;
+        updateTransform();
+      }
+
+      lastX = event.clientX;
+      lastY = event.clientY;
+    });
+
+    window.addEventListener("mouseup", () => {
+      if (!dragging) return;
+
+      const dx = lastX - startX;
+      const dy = lastY - startY;
+
+      if (scale <= 1.02 && Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy)) {
+        if (dx < 0) nextPhoto();
+        else previousPhoto();
+      }
+
+      dragging = false;
+    });
+
+    viewer.addEventListener("dblclick", event => {
+      event.preventDefault();
+      toggleZoom();
+    });
+
+    function getTouchDistance(touches) {
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    /* ============================================================
+       6. FORMATTERS / HELPERS
+       ============================================================ */
+
+    function formatDateGroup(dateText) {
+      const date = new Date(dateText);
+      if (isNaN(date.getTime())) return dateText || "Photos";
+
+      return date.toLocaleDateString([], {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric"
+      });
+    }
+
+    function formatViewerInfo(photo) {
+      const date = new Date(photo.DateTaken);
+      const caption = photo.Caption || "";
+
+      if (isNaN(date.getTime())) return caption;
+
+      const datePart = date.toLocaleDateString([], {
+        day: "numeric",
+        month: "short",
+        year: "numeric"
+      });
+
+      const timePart = date.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false
+      });
+
+      return caption ? `${datePart} ${timePart} · ${caption}` : `${datePart} ${timePart}`;
+    }
+
+    function parseClockToMinutes(text) {
+      const match = String(text || "").match(/^(\d{1,2}):(\d{2})$/);
+      if (!match) return 0;
+      return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+    }
+
+    function formatClockMinutes(totalMinutes) {
+      const minutesInDay = 24 * 60;
+      const wrapped = ((totalMinutes % minutesInDay) + minutesInDay) % minutesInDay;
+      const hours = Math.floor(wrapped / 60);
+      const minutes = wrapped % 60;
+      return String(hours).padStart(2, "0") + ":" + String(minutes).padStart(2, "0");
+    }
+
+    function escapeHtml(text) {
+      if (!text) return "";
+
+      return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function clamp(value, min, max) {
+      if (isNaN(value)) return min;
+      return Math.max(min, Math.min(max, value));
+    }
+
+    /* ============================================================
+       7. STARTUP
+       ============================================================ */
+
+    loadGalleryData();
+
+    // Poll lightly so date/order/visibility/settings changes can be made from the sheet.
+    setInterval(loadGalleryData, 3000);
+
+    // Local clock continues from Display Time.
+    setInterval(updateClock, 1000);
   </script>
 </body>
 </html>
