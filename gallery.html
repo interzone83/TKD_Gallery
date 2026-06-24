@@ -725,37 +725,8 @@
     }
 
     function formatViewerInfo(photo) {
-  const date = new Date(photo.DateTaken);
-  const caption = photo.Caption || "";
-
-  if (isNaN(date.getTime())) return caption;
-
-  const datePart = date.toLocaleDateString([], {
-    day: "numeric",
-    month: "short",
-    year: "numeric"
-  });
-
-  const timePart = date.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false
-  });
-
-  return caption ? `${datePart} ${timePart} · ${caption}` : `${datePart} ${timePart}`;
-}
-
-With this:
-
-function formatViewerInfo(photo) {
-  return photo.Caption || "";
-}
-
-For absolutely nothing in the top-left of the zoomed image, use this instead:
-
-function formatViewerInfo(photo) {
-  return "";
-}
+      return "";
+    }
 
     function parseClockToMinutes(text) {
       const match = String(text || "").match(/^(\d{1,2}):(\d{2})$/);
